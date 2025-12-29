@@ -26,3 +26,8 @@ exports.upload = async (bucket, key, path) => {
     })
   );
 };
+
+exports.getStream = async (bucket, key) => {
+  const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  return res.Body; // Returns a readable stream
+};
