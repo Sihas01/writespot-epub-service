@@ -156,8 +156,9 @@ function textToXhtml(text, title, chapterNumber, language = "en") {
     const xhtmlParagraphs = lines.map(line => {
       const trimmed = line.trim();
       // Check if it might be a heading (short line)
-      // For Sinhala, we DO NOT generate <h2> to ensure consistent body text size
-      const isHeading = language !== "si" && (trimmed.length < 100 && (trimmed === trimmed.toUpperCase() || trimmed.length < 60));
+      // ONLY allow h2 if it's very short (5 words or less) and NOT Sinhala (user wants absolute consistency for Sinhala)
+      const words = trimmed.split(/\s+/).length;
+      const isHeading = language !== "si" && words > 0 && words <= 5 && trimmed.length < 60;
 
       if (isHeading) {
         return `        <h2>${escapeHtml(trimmed)}</h2>`;
@@ -190,8 +191,9 @@ ${xhtmlParagraphs.join("\n")}
   const xhtmlParagraphs = paragraphs.map(para => {
     const trimmed = para.trim();
     // Check if paragraph might be a heading
-    // For Sinhala, we DO NOT generate <h2> to ensure consistent body text size
-    const isHeading = language !== "si" && (trimmed.length < 100 && trimmed.split(/\s+/).length < 10);
+    // ONLY allow h2 if it's very short (5 words or less) and NOT Sinhala
+    const words = trimmed.split(/\s+/).length;
+    const isHeading = language !== "si" && words > 0 && words <= 5 && trimmed.length < 60;
 
     if (isHeading) {
       return `        <h2>${escapeHtml(trimmed)}</h2>`;
@@ -406,6 +408,7 @@ async function extractText(filePath) {
 exports.convert = async (input, output, language) => {
   try {
     // Extract text from input file
+    console.log(`convert: starting with language="${language}"`);
     console.log(`Extracting text from ${input}...`);
     const text = await extractText(input);
 
