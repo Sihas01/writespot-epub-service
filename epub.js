@@ -11,7 +11,7 @@ const JSZip = require("jszip");
 function detectChapters(text) {
   const chapters = [];
   const lines = text.split(/\r?\n/);
-  
+
   // Patterns for chapter detection
   const chapterPatterns = [
     /^chapter\s+(\d+)/i,
@@ -26,16 +26,17 @@ function detectChapters(text) {
     /^සිව්වන\s+පරිච්ඡේදය/i,
     /^පස්වන\s+පරිච්ඡේදය/i,
   ];
-  
+
   // Also detect large headings (all caps, or lines with few words that are likely titles)
-  let currentChapter = { title: "Introduction", startIndex: 0, content: [] };
+  // Start with no title
+  let currentChapter = { title: "", startIndex: 0, content: [] };
   let chapterIndex = 0;
-  
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    
+
     if (!line) continue;
-    
+
     // Check if line matches chapter pattern
     let isChapterHeading = false;
     for (const pattern of chapterPatterns) {
@@ -44,12 +45,12 @@ function detectChapters(text) {
         break;
       }
     }
-    
+
     // Also check for large headings (all caps with reasonable length, or short lines that might be titles)
     if (!isChapterHeading && line.length > 0) {
       const isAllCaps = line === line.toUpperCase() && line.length < 100 && /[A-Z]/.test(line);
       const isShortTitle = line.length < 80 && i > 0 && lines[i - 1].trim() === "";
-      
+
       if (isAllCaps || (isShortTitle && line.length > 10)) {
         // Check if next line is not empty (likely a heading followed by content)
         if (i < lines.length - 1 && lines[i + 1].trim() !== "") {
@@ -57,13 +58,13 @@ function detectChapters(text) {
         }
       }
     }
-    
+
     if (isChapterHeading && currentChapter.content.length > 0) {
       // Save current chapter
       currentChapter.endIndex = i;
       currentChapter.content = lines.slice(currentChapter.startIndex, i).join("\n");
       chapters.push({ ...currentChapter });
-      
+
       // Start new chapter
       chapterIndex++;
       currentChapter = {
@@ -76,19 +77,19 @@ function detectChapters(text) {
       currentChapter.content.push(line);
     }
   }
-  
+
   // Add final chapter
   if (currentChapter.content.length > 0) {
     currentChapter.endIndex = lines.length;
     currentChapter.content = lines.slice(currentChapter.startIndex).join("\n");
     chapters.push(currentChapter);
   }
-  
+
   // If no chapters detected, split by page breaks or paragraph groups
   if (chapters.length <= 1) {
     return splitByParagraphs(text);
   }
-  
+
   return chapters;
 }
 
@@ -99,16 +100,20 @@ function splitByParagraphs(text) {
   const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
   const chapters = [];
   const paragraphsPerChapter = 15; // Group every 15 paragraphs into a chapter
-  
+
   for (let i = 0; i < paragraphs.length; i += paragraphsPerChapter) {
     const chapterParagraphs = paragraphs.slice(i, i + paragraphsPerChapter);
+    // Use the first few words of the first paragraph as a tentative title if no chapters were detected
+    const firstPara = chapterParagraphs[0].trim();
+    const title = firstPara.length < 50 ? firstPara : "";
+
     chapters.push({
-      title: `Chapter ${Math.floor(i / paragraphsPerChapter) + 1}`,
+      title: title,
       content: chapterParagraphs.join("\n\n"),
       chapterIndex: Math.floor(i / paragraphsPerChapter)
     });
   }
-  
+
   return chapters;
 }
 
@@ -130,31 +135,38 @@ function escapeHtml(text) {
  * Convert plain text to XHTML with proper formatting
  */
 function textToXhtml(text, title, chapterNumber, language = "en") {
-  const fontFamily = language === "si" 
-    ? "'Noto Serif Sinhala', 'Iskoola Pota', serif" 
+  const fontFamily = language === "si"
+    ? "'Noto Serif Sinhala', 'Iskoola Pota', serif"
     : "serif";
-  
+
   // Split into paragraphs
   const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
-  
+
   // If no double line breaks, split by single line breaks
   if (paragraphs.length === 1) {
     const lines = text.split(/\n/).filter(l => l.trim().length > 0);
     const xhtmlParagraphs = lines.map(line => {
       const trimmed = line.trim();
-      // Check if it might be a heading (short line, possibly all caps)
-      if (trimmed.length < 100 && (trimmed === trimmed.toUpperCase() || trimmed.length < 60)) {
+      // Check if it might be a heading (short line)
+      // For Sinhala, we don't check for all caps
+      const isHeading = language === "si"
+        ? trimmed.length < 50 && trimmed.split(/\s+/).length < 5
+        : trimmed.length < 100 && (trimmed === trimmed.toUpperCase() || trimmed.length < 60);
+
+      if (isHeading) {
         return `        <h2>${escapeHtml(trimmed)}</h2>`;
       }
       return `        <p>${escapeHtml(trimmed)}</p>`;
     });
-    
+
+    const titleElement = title ? `    <h1>${escapeHtml(title)}</h1>` : "";
+
     return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
 <head>
     <meta charset="UTF-8"/>
-    <title>${escapeHtml(title)}</title>
+    <title>${escapeHtml(title || "Chapter")}</title>
     <style type="text/css">
         body { font-family: ${fontFamily}; margin: 1em; line-height: 1.6; }
         h1, h2 { margin-top: 1em; margin-bottom: 0.5em; }
@@ -162,27 +174,33 @@ function textToXhtml(text, title, chapterNumber, language = "en") {
     </style>
 </head>
 <body>
-    <h1>${escapeHtml(title)}</h1>
+${titleElement}
 ${xhtmlParagraphs.join("\n")}
 </body>
 </html>`;
   }
-  
+
   const xhtmlParagraphs = paragraphs.map(para => {
     const trimmed = para.trim();
     // Check if paragraph might be a heading
-    if (trimmed.length < 100 && trimmed.split(/\s+/).length < 10) {
+    const isHeading = language === "si"
+      ? trimmed.length < 50 && trimmed.split(/\s+/).length < 5
+      : trimmed.length < 100 && trimmed.split(/\s+/).length < 10;
+
+    if (isHeading) {
       return `        <h2>${escapeHtml(trimmed)}</h2>`;
     }
     return `        <p>${escapeHtml(trimmed)}</p>`;
   });
-  
+
+  const titleElement = title ? `    <h1>${escapeHtml(title)}</h1>` : "";
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
 <head>
     <meta charset="UTF-8"/>
-    <title>${escapeHtml(title)}</title>
+    <title>${escapeHtml(title || "Chapter")}</title>
     <style type="text/css">
         body { font-family: ${fontFamily}; margin: 1em; line-height: 1.6; }
         h1, h2 { margin-top: 1em; margin-bottom: 0.5em; }
@@ -190,7 +208,7 @@ ${xhtmlParagraphs.join("\n")}
     </style>
 </head>
 <body>
-    <h1>${escapeHtml(title)}</h1>
+${titleElement}
 ${xhtmlParagraphs.join("\n")}
 </body>
 </html>`;
@@ -203,14 +221,14 @@ function generateContentOpf(chapters, language, bookTitle = "Book") {
   const lang = language === "si" ? "si" : "en";
   const items = [];
   const itemrefs = [];
-  
+
   // Cover page
   items.push('    <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>');
   itemrefs.push('    <itemref idref="cover"/>');
-  
+
   // Navigation file (EPUB 3)
   items.push('    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>');
-  
+
   // Chapter files
   chapters.forEach((chapter, index) => {
     const id = `chapter-${index + 1}`;
@@ -218,7 +236,7 @@ function generateContentOpf(chapters, language, bookTitle = "Book") {
     items.push(`    <item id="${id}" href="${href}" media-type="application/xhtml+xml"/>`);
     itemrefs.push(`    <itemref idref="${id}"/>`);
   });
-  
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id">
     <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
@@ -249,7 +267,7 @@ function generateTocNcx(chapters, bookTitle = "Book") {
             <content src="chapter-${index + 1}.xhtml"/>
         </navPoint>`;
   });
-  
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
     <head>
@@ -280,7 +298,7 @@ function generateNavXhtml(chapters, bookTitle = "Book") {
   const navItems = chapters.map((chapter, index) => {
     return `            <li><a href="chapter-${index + 1}.xhtml">${escapeHtml(chapter.title)}</a></li>`;
   });
-  
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
@@ -336,7 +354,7 @@ function generateCoverXhtml(bookTitle = "Book") {
  * Generate a simple UUID
  */
 function generateUUID() {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
     const r = Math.random() * 16 | 0;
     const v = c === "x" ? r : (r & 0x3 | 0x8);
     return v.toString(16);
@@ -365,7 +383,7 @@ async function extractTextFromDocx(filePath) {
  */
 async function extractText(filePath) {
   const ext = path.extname(filePath).toLowerCase();
-  
+
   if (ext === ".pdf") {
     return await extractTextFromPdf(filePath);
   } else if (ext === ".docx" || ext === ".doc") {
@@ -384,25 +402,25 @@ exports.convert = async (input, output, language) => {
     // Extract text from input file
     console.log(`Extracting text from ${input}...`);
     const text = await extractText(input);
-    
+
     if (!text || text.trim().length === 0) {
       throw new Error("No text content extracted from file");
     }
-    
+
     // Detect chapters
     console.log("Detecting chapters...");
     const chapters = detectChapters(text);
     console.log(`Found ${chapters.length} chapters`);
-    
+
     // Generate book title from filename
     const bookTitle = path.basename(input, path.extname(input));
-    
+
     // Create EPUB structure
     const zip = new JSZip();
-    
+
     // Add mimetype (must be first, uncompressed)
     zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
-    
+
     // Create META-INF directory
     const metaInf = zip.folder("META-INF");
     metaInf.file("container.xml", `<?xml version="1.0" encoding="UTF-8"?>
@@ -411,28 +429,28 @@ exports.convert = async (input, output, language) => {
         <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
     </rootfiles>
 </container>`);
-    
+
     // Create OEBPS directory
     const oebps = zip.folder("OEBPS");
-    
+
     // Generate cover page
     oebps.file("cover.xhtml", generateCoverXhtml(bookTitle));
-    
+
     // Generate chapter XHTML files
     chapters.forEach((chapter, index) => {
       const xhtml = textToXhtml(chapter.content, chapter.title, index + 1, language);
       oebps.file(`chapter-${index + 1}.xhtml`, xhtml);
     });
-    
+
     // Generate content.opf
     oebps.file("content.opf", generateContentOpf(chapters, language, bookTitle));
-    
+
     // Generate toc.ncx (EPUB 2)
     oebps.file("toc.ncx", generateTocNcx(chapters, bookTitle));
-    
+
     // Generate nav.xhtml (EPUB 3)
     oebps.file("nav.xhtml", generateNavXhtml(chapters, bookTitle));
-    
+
     // Generate EPUB file
     console.log(`Generating EPUB file: ${output}...`);
     const epubBuffer = await zip.generateAsync({
@@ -440,7 +458,7 @@ exports.convert = async (input, output, language) => {
       compression: "DEFLATE",
       compressionOptions: { level: 9 }
     });
-    
+
     fs.writeFileSync(output, epubBuffer);
     console.log(`EPUB generated successfully: ${output}`);
   } catch (error) {
