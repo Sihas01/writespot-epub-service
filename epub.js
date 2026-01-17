@@ -59,20 +59,26 @@ function detectChapters(text) {
       }
     }
 
-    if (isChapterHeading && currentChapter.content.length > 0) {
-      // Save current chapter
-      currentChapter.endIndex = i;
-      currentChapter.content = lines.slice(currentChapter.startIndex, i).join("\n");
-      chapters.push({ ...currentChapter });
+    if (isChapterHeading) {
+      if (currentChapter.content.length > 0 || currentChapter.title !== "") {
+        // Save current chapter
+        currentChapter.endIndex = i;
+        currentChapter.content = lines.slice(currentChapter.startIndex, i).join("\n");
+        chapters.push({ ...currentChapter });
 
-      // Start new chapter
-      chapterIndex++;
-      currentChapter = {
-        title: line,
-        startIndex: i,
-        content: [],
-        chapterIndex
-      };
+        // Start new chapter
+        chapterIndex++;
+        currentChapter = {
+          title: line,
+          startIndex: i + 1, // Start content from next line
+          content: [],
+          chapterIndex
+        };
+      } else {
+        // This is the very first line and it's a heading
+        currentChapter.title = line;
+        currentChapter.startIndex = i + 1; // Content starts after this heading
+      }
     } else {
       currentChapter.content.push(line);
     }
@@ -148,10 +154,8 @@ function textToXhtml(text, title, chapterNumber, language = "en") {
     const xhtmlParagraphs = lines.map(line => {
       const trimmed = line.trim();
       // Check if it might be a heading (short line)
-      // For Sinhala, we don't check for all caps
-      const isHeading = language === "si"
-        ? trimmed.length < 50 && trimmed.split(/\s+/).length < 5
-        : trimmed.length < 100 && (trimmed === trimmed.toUpperCase() || trimmed.length < 60);
+      // For Sinhala, we DO NOT generate <h2> to ensure consistent body text size
+      const isHeading = language !== "si" && (trimmed.length < 100 && (trimmed === trimmed.toUpperCase() || trimmed.length < 60));
 
       if (isHeading) {
         return `        <h2>${escapeHtml(trimmed)}</h2>`;
@@ -183,9 +187,8 @@ ${xhtmlParagraphs.join("\n")}
   const xhtmlParagraphs = paragraphs.map(para => {
     const trimmed = para.trim();
     // Check if paragraph might be a heading
-    const isHeading = language === "si"
-      ? trimmed.length < 50 && trimmed.split(/\s+/).length < 5
-      : trimmed.length < 100 && trimmed.split(/\s+/).length < 10;
+    // For Sinhala, we DO NOT generate <h2> to ensure consistent body text size
+    const isHeading = language !== "si" && (trimmed.length < 100 && trimmed.split(/\s+/).length < 10);
 
     if (isHeading) {
       return `        <h2>${escapeHtml(trimmed)}</h2>`;
