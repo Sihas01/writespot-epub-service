@@ -8,7 +8,7 @@ const JSZip = require("jszip");
  * Detects chapter headings in text
  * Supports English (Chapter 1, CHAPTER 2, etc.) and Sinhala patterns
  */
-function detectChapters(text) {
+function detectChapters(text, language = "en") {
   const chapters = [];
   const lines = text.split(/\r?\n/);
 
@@ -46,8 +46,9 @@ function detectChapters(text) {
       }
     }
 
-    // Also check for large headings (all caps with reasonable length, or short lines that might be titles)
-    if (!isChapterHeading && line.length > 0) {
+    // Also check for large headings (all caps, or lines with few words that are likely titles)
+    // For Sinhala, we ONLY rely on explicit chapter patterns to avoid body text promotion
+    if (!isChapterHeading && line.length > 0 && language !== "si") {
       const isAllCaps = line === line.toUpperCase() && line.length < 100 && /[A-Z]/.test(line);
       const isShortTitle = line.length < 80 && i > 0 && lines[i - 1].trim() === "";
 
@@ -412,7 +413,7 @@ exports.convert = async (input, output, language) => {
 
     // Detect chapters
     console.log("Detecting chapters...");
-    const chapters = detectChapters(text);
+    const chapters = detectChapters(text, language);
     console.log(`Found ${chapters.length} chapters`);
 
     // Generate book title from filename
