@@ -92,9 +92,9 @@ function detectChapters(text, language = "en") {
     chapters.push(currentChapter);
   }
 
-  // If no chapters detected, split by page breaks or paragraph groups
-  if (chapters.length <= 1) {
-    return splitByParagraphs(text);
+  // Fallback split only if no chapters AND no custom title were detected
+  if (chapters.length === 0 || (chapters.length === 1 && chapters[0].title === "")) {
+    return splitByParagraphs(text, language);
   }
 
   return chapters;
@@ -103,7 +103,7 @@ function detectChapters(text, language = "en") {
 /**
  * Split content by paragraphs when no chapter headings are detected
  */
-function splitByParagraphs(text) {
+function splitByParagraphs(text, language = "en") {
   const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
   const chapters = [];
   const paragraphsPerChapter = 15; // Group every 15 paragraphs into a chapter
@@ -111,8 +111,9 @@ function splitByParagraphs(text) {
   for (let i = 0; i < paragraphs.length; i += paragraphsPerChapter) {
     const chapterParagraphs = paragraphs.slice(i, i + paragraphsPerChapter);
     // Use the first few words of the first paragraph as a tentative title if no chapters were detected
+    // DISABLED for Sinhala to ensure consistent body text size
     const firstPara = chapterParagraphs[0].trim();
-    const title = firstPara.length < 50 ? firstPara : "";
+    const title = (language !== "si" && firstPara.length < 50) ? firstPara : "";
 
     chapters.push({
       title: title,
@@ -173,9 +174,10 @@ function textToXhtml(text, title, chapterNumber, language = "en") {
     <meta charset="UTF-8"/>
     <title>${escapeHtml(title || "Chapter")}</title>
     <style type="text/css">
-        body { font-family: ${fontFamily}; margin: 1em; line-height: 1.6; }
-        h1, h2 { margin-top: 1em; margin-bottom: 0.5em; }
-        p { margin: 0.5em 0; text-align: justify; }
+        body { font-family: ${fontFamily}; margin: 1em; line-height: 1.6; font-size: 1em; }
+        h1 { font-size: 1.6em; margin-top: 1em; margin-bottom: 0.5em; }
+        h2 { font-size: 1.3em; margin-top: 1em; margin-bottom: 0.5em; }
+        p { margin: 0.5em 0; text-align: justify; font-size: 1em; }
     </style>
 </head>
 <body>
